@@ -3,9 +3,10 @@ use crate::{
     formats::{
         traits::{
             Acceleration, BatteryPotential, Humidity, MacAddress, MeasurementSequenceNumber,
-            MovementCounter, Pressure, ProtocolPayload, Temperature, TransmitterPower,
+            MovementCounter, Pressure, ProtocolPayload, Temperature, TransmitterPower, Pm25,
+            Co2, Nox, Voc, Lux, DataFormat, AirDensity
         },
-        v3, v5, AccelerationVector,
+        v3, v5, v6, AccelerationVector,
     },
 };
 
@@ -30,9 +31,21 @@ pub struct SensorValues {
     measurement_sequence_number: Option<u32>,
     /// MAC address
     mac_address: Option<[u8; 6]>,
+    /// PM 2.5 value in micrograms per cubic meter
+    pm25: Option<u16>,
+    /// CO2 value in parts per million
+    co2: Option<u16>,
+    /// Unitless index values for VOC (Volatile Organic Compounds)
+    voc : Option<u16>,
+    /// Unitless index values for NOX (Nitrogen Oxides)
+    nox : Option<u16>,
+    /// Luminosity value in logarithmic value. See Ruuvi Dataformat documentation for more
+    lux : Option<u8>,
+    /// The dataformat version
+    dataformat: Option<u8>,
+    /// Air density in grams per cubic meter
+    air_density: Option<u16>,
 }
-
-const MANUFACTURER_DATA_ID: u16 = 0x0499;
 
 impl SensorValues {
     /// Parses sensor values from the payload encoded in manufacturer specific data -field. At the
@@ -49,30 +62,30 @@ impl SensorValues {
     /// use ruuvi_sensor_protocol::{SensorValues, Temperature};
     /// # use ruuvi_sensor_protocol::ParseError;
     ///
-    /// let id = 0x0499;
     /// let value = [
     ///     0x03, 0x17, 0x01, 0x45, 0x35, 0x58, 0x03, 0xE8, 0x04, 0xE7, 0x05, 0xE6, 0x08, 0x86,
     /// ];
-    /// let values = SensorValues::from_manufacturer_specific_data(id, value)?;
+    /// let values = SensorValues::from_manufacturer_specific_data(value)?;
     /// assert_eq!(values.temperature_as_millicelsius(), Some(1690));
     /// # Ok::<(), ParseError>(())
     /// ```
     pub fn from_manufacturer_specific_data(
-        id: u16,
         value: impl AsRef<[u8]>,
     ) -> Result<Self, ParseError> {
-        match (id, value.as_ref()) {
-            (MANUFACTURER_DATA_ID, [v3::SensorValues::VERSION, data @ ..]) => {
+        match value.as_ref() {
+            [v3::SensorValues::VERSION, data @ ..] => {
                 Self::parse_format_version::<v3::SensorValues, { v3::SensorValues::SIZE }>(data)
             }
-            (MANUFACTURER_DATA_ID, [v5::SensorValues::VERSION, data @ ..]) => {
+            [v5::SensorValues::VERSION, data @ ..] => {
                 Self::parse_format_version::<v5::SensorValues, { v5::SensorValues::SIZE }>(data)
             }
-            (MANUFACTURER_DATA_ID, [version, ..]) => {
+            [v6::SensorValues::VERSION, data @ ..] => {
+                Self::parse_format_version::<v6::SensorValues, { v6::SensorValues::SIZE }>(data)
+            }
+            [version, ..] => {
                 Err(ParseError::UnsupportedFormatVersion(*version))
             }
-            (MANUFACTURER_DATA_ID, []) => Err(ParseError::EmptyValue),
-            (id, _) => Err(ParseError::UnknownManufacturerId(id)),
+            [] => Err(ParseError::EmptyValue),
         }
     }
 
@@ -87,6 +100,13 @@ impl SensorValues {
             pressure: values.pressure_as_pascals(),
             temperature: values.temperature_as_millikelvins(),
             tx_power: values.tx_power_as_dbm(),
+            pm25: values.pm25_as_10micrograms_per_cubicmeter(),
+            co2: values.co2_as_ppm(),
+            voc: values.voc_index(),
+            nox: values.nox_index(),
+            lux: values.lux_as_logarithmic_value(),
+            dataformat: values.get_dataformat(),
+            air_density: values.get_air_density_grams_per_cubic_meter(),
         }
     }
 
@@ -163,11 +183,45 @@ impl TransmitterPower for SensorValues {
     }
 }
 
+impl Pm25 for SensorValues {
+    fn pm25_as_10micrograms_per_cubicmeter(&self) -> Option<u16> {
+        self.pm25
+    }
+}
+
+impl Co2 for SensorValues {
+    fn co2_as_ppm(&self) -> Option<u16> {
+        self.co2
+    }
+}
+
+impl Voc for SensorValues {
+    fn voc_index(&self) -> Option<u16> {
+        self.voc
+    }
+}
+
+impl Nox for SensorValues {
+    fn nox_index(&self) -> Option<u16> {
+        self.nox
+    }
+}
+
+impl Lux for SensorValues {
+    fn lux_as_logarithmic_value(&self) -> Option<u8> { self.lux }
+}
+
+impl DataFormat for SensorValues {
+    fn get_dataformat(&self) -> Option<u8> {self.dataformat }
+}
+
+impl AirDensity for SensorValues {
+    fn get_air_density_grams_per_cubic_meter(&self) -> Option<u16> {self.air_density}
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    use crate::formats::testing::test_measurement_trait_methods;
 
     #[test]
     fn sensor_values_has_default_traits() {
@@ -178,7 +232,7 @@ mod tests {
         (
             $(
                 test $name: ident {
-                    input: ($id: expr, $value: expr),
+                    input: $value: expr,
                     result: $result: expr,
                 }
             )+
@@ -186,7 +240,7 @@ mod tests {
             $(
                 #[test]
                 fn $name() {
-                    let result = SensorValues::from_manufacturer_specific_data($id, $value);
+                    let result = SensorValues::from_manufacturer_specific_data($value);
                     assert_eq!(result, $result);
                 }
             )+
@@ -213,17 +267,17 @@ mod tests {
 
                     test_parser! {
                         test input_with_invalid_length {
-                            input: (MANUFACTURER_DATA_ID, &INPUT[..8]),
+                            input: (&INPUT[..8]),
                             result: Err(ParseError::InvalidValueLength(VERSION, 8, SIZE)),
                         }
 
                         test missing_data {
-                            input: (MANUFACTURER_DATA_ID, &[VERSION]),
+                            input: (&[VERSION]),
                             result: Err(ParseError::InvalidValueLength(VERSION, 1, SIZE)),
                         }
 
                         test valid_input {
-                            input: (MANUFACTURER_DATA_ID, INPUT),
+                            input: (INPUT),
                             result: Ok(RESULT),
                         }
                     }
@@ -250,18 +304,13 @@ mod tests {
     }
 
     test_parser! {
-        test unsupported_manufacturer_id {
-            input: (0x0477, [3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
-            result: Err(ParseError::UnknownManufacturerId(0x0477)),
-        }
-
         test unsupported_format {
-            input: (MANUFACTURER_DATA_ID, [0, 1, 2, 3]),
+            input: [0, 1, 2, 3],
             result: Err(ParseError::UnsupportedFormatVersion(0)),
         }
 
         test empty_data {
-            input: (MANUFACTURER_DATA_ID, []),
+            input: [],
             result: Err(ParseError::EmptyValue),
         }
     }
@@ -282,6 +331,8 @@ mod tests {
                 pressure: Some(63656),
                 temperature: Some(1690 + 273_150),
                 tx_power: None,
+                pm25: None,co2: None,voc: None,nox: None, lux: None, dataformat: Some(3),
+                air_density: Some(806)
             },
         }
 
@@ -300,7 +351,20 @@ mod tests {
                 pressure: Some(100_044),
                 temperature: Some(24_300 + 273_150),
                 tx_power: Some(4),
+                pm25: None,co2: None,voc: None,nox: None, lux: None, dataformat: Some(5),
+                air_density: Some(1164)
             },
         }
+    }
+    #[test]
+    fn test_version_trait() {
+        const VALID_VALUES: [u8; 20] = [
+            //  V     Temp        Humid       Pressure    PM25        CO2         VOC   NOX   LUX   Res   MSeq
+            0x06, 0x12, 0xFC, 0x53, 0x94, 0xC3, 0x7C, 0x11, 0x22, 0x33, 0x44, 0x05, 0x06, 0x07, 0xFF, 0x08,
+            //Fl  Low 3 bytes mac
+            0x00, 0xCB, 0xB8, 0x33
+        ];
+        let sensor_values = SensorValues::from_manufacturer_specific_data(VALID_VALUES).unwrap();
+        assert_eq!(sensor_values.get_dataformat(), Some(6));
     }
 }

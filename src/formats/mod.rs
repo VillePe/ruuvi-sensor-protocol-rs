@@ -2,7 +2,8 @@ pub use crate::formats::{
     generic::SensorValues,
     traits::{
         Acceleration, BatteryPotential, Humidity, MacAddress, MeasurementSequenceNumber,
-        MovementCounter, Pressure, Temperature, TransmitterPower,
+        MovementCounter, Pressure, Temperature, TransmitterPower, Pm25, Co2, Voc, Nox, DataFormat,
+        AirDensity
     },
 };
 
@@ -14,6 +15,7 @@ mod generic;
 mod traits;
 mod v3;
 mod v5;
+mod v6;
 
 #[cfg(test)]
 mod testing;

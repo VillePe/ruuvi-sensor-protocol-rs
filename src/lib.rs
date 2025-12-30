@@ -14,11 +14,10 @@ invalid data in value field.
 ```rust
 use ruuvi_sensor_protocol::{ParseError, SensorValues};
 
-let id = 0x0499;
 let value = [
     0x07, 0x17, 0x01, 0x45, 0x35, 0x58, 0x03, 0xE8, 0x04, 0xE7, 0x05, 0xE6, 0x08, 0x86,
 ];
-let result = SensorValues::from_manufacturer_specific_data(id, value);
+let result = SensorValues::from_manufacturer_specific_data(value);
 assert_eq!(result, Err(ParseError::UnsupportedFormatVersion(7)));
 ```
 
@@ -30,11 +29,10 @@ use ruuvi_sensor_protocol::{
 };
 # use ruuvi_sensor_protocol::ParseError;
 
-let id = 0x0499;
 let value = [
     0x03, 0x17, 0x01, 0x45, 0x35, 0x58, 0x03, 0xE8, 0x04, 0xE7, 0x05, 0xE6, 0x08, 0x86,
 ];
-let values = SensorValues::from_manufacturer_specific_data(id, value)?;
+let values = SensorValues::from_manufacturer_specific_data(value)?;
 
 assert_eq!(values.humidity_as_ppm(), Some(115_000));
 assert_eq!(values.temperature_as_millicelsius(), Some(1690));
@@ -68,7 +66,7 @@ pub use crate::{
     formats::{
         Acceleration, AccelerationVector, BatteryPotential, Humidity, MacAddress,
         MeasurementSequenceNumber, MovementCounter, Pressure, SensorValues, Temperature,
-        TransmitterPower,
+        TransmitterPower, Pm25, Co2, Voc, Nox, DataFormat, AirDensity
     },
 };
 
@@ -79,3 +77,4 @@ pub mod gateway;
 
 #[cfg(test)]
 mod testing;
+mod utils;

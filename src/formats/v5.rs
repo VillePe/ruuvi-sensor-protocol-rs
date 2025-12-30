@@ -2,9 +2,11 @@ use crate::formats::{
     traits::{
         Acceleration, BatteryPotential, Humidity, MacAddress, MeasurementSequenceNumber,
         MovementCounter, Pressure, ProtocolPayload, Temperature, TransmitterPower,
+        Pm25, Co2, Voc, Nox, Lux, DataFormat, AirDensity
     },
     AccelerationVector,
 };
+use crate::utils;
 
 /// Raw sensor values parsed from manufacturer data.
 #[derive(Debug, Eq, PartialEq)]
@@ -124,6 +126,51 @@ impl TransmitterPower for SensorValues {
         } else {
             Some(raw_value * 2 - 40)
         }
+    }
+}
+
+impl Pm25 for SensorValues {
+    fn pm25_as_10micrograms_per_cubicmeter(&self) -> Option<u16> {
+        None
+    }
+}
+
+impl Co2 for SensorValues {
+    fn co2_as_ppm(&self) -> Option<u16> {
+        None
+    }
+}
+
+impl Voc for SensorValues {
+    fn voc_index(&self) -> Option<u16> {
+        None
+    }
+}
+
+impl Nox for SensorValues {
+    fn nox_index(&self) -> Option<u16> {
+        None
+    }
+}
+
+impl Lux for SensorValues {
+    fn lux_as_logarithmic_value(&self) -> Option<u8> {
+        None
+    }
+}
+
+impl DataFormat for SensorValues {
+    fn get_dataformat(&self) -> Option<u8> {
+        Some(5)
+    }
+}
+
+impl AirDensity for SensorValues {
+    fn get_air_density_grams_per_cubic_meter(&self) -> Option<u16> {
+        Some((utils::calculate_air_density(
+            self.temperature_as_millicelsius()? as f32/1000.0,
+            self.humidity_as_ppm()? as f32 / 10_000.0,
+            self.pressure_as_pascals()? as f32) * 1000.0) as u16)
     }
 }
 
