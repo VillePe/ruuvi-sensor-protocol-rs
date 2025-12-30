@@ -222,6 +222,7 @@ impl AirDensity for SensorValues {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::formats::testing::test_measurement_trait_methods;
 
     #[test]
     fn sensor_values_has_default_traits() {
